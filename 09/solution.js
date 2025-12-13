@@ -1,78 +1,96 @@
-import { getLines } from "../lib/helpers.js";
+import { chain, cloneDeep, orderBy, zip } from "lodash-es";
+import { getLines, sumArray } from "../lib/helpers.js";
 
-const input = getLines("./example1.txt").map((line) =>
+const input = getLines("./input.txt").map((line) =>
   line.split(",").map((x) => Number(x)),
 );
-const maxY = Math.max(...input.map(([, y]) => y));
-const edges = input.map((x, i) => [
-  x,
-  i + 1 === input.length ? input[0] : input[i + 1],
-]);
 
-console.log(maxY);
+const xs = chain(input)
+  .map(([x]) => x)
+  .uniq()
+  .orderBy((v) => v)
+  .value();
+const ys = chain(input)
+  .map(([, y]) => y)
+  .uniq()
+  .orderBy((v) => v)
+  .value();
+
+const grid = Array(ys.length * 2 - 1)
+  .fill(0)
+  .map(() => Array(xs.length * 2 - 1).fill(0));
+
+zip(input, [...input.slice(1), input[0]]).forEach(([[x1, y1], [x2, y2]]) => {
+  const [ix1, ix2] = orderBy(
+    [xs.indexOf(x1) * 2, xs.indexOf(x2) * 2],
+    (v) => v,
+  );
+  const [iy1, iy2] = orderBy(
+    [ys.indexOf(y1) * 2, ys.indexOf(y2) * 2],
+    (v) => v,
+  );
+
+  for (let x = ix1; x <= ix2; x++) {
+    for (let y = iy1; y <= iy2; y++) {
+      grid[y][x] = 1;
+    }
+  }
+});
+
+const outside = new Set();
+const q = [[-1, -1]];
+while (q.length) {
+  const [x, y] = q.shift();
+
+  [
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+    [0, -1],
+  ].forEach((d) => {
+    const [nx, ny] = sumArray([x, y], d);
+
+    if (nx < -1 || ny < -1 || nx > grid[0].length || ny > grid.length) return;
+    if (outside.has(JSON.stringify([nx, ny])) || grid[ny]?.[nx] === 1) return;
+
+    q.push([nx, ny]);
+    outside.add(JSON.stringify([nx, ny]));
+  });
+}
+
+for (let y = 0; y < grid.length; y++) {
+  for (let x = 0; x < grid[y].length; x++) {
+    if (!outside.has(JSON.stringify([x, y]))) {
+      grid[y][x] = 1;
+    }
+  }
+}
+
+const tlbrAreas = cloneDeep(grid);
+
+for (let y = 0; y < tlbrAreas.length; y++) {
+  for (let x = 0; x < tlbrAreas[y].length; x++) {
+    const topleft = tlbrAreas[y - 1]?.[x - 1] ?? 0;
+    const left = tlbrAreas[y - 1]?.[x] ?? 0;
+    const top = tlbrAreas[y][x - 1] ?? 0;
+    tlbrAreas[y][x] = tlbrAreas[y][x] + left + top - topleft;
+  }
+}
 
 function area([x1, y1], [x2, y2]) {
   return (Math.abs(x1 - x2) + 1) * (Math.abs(y1 - y2) + 1);
 }
 
-function onSegment(p, q, r) {
-  return (
-    q[0] <= Math.max(p[0], r[0]) &&
-    q[0] >= Math.min(p[0], r[0]) &&
-    q[1] <= Math.max(p[1], r[1]) &&
-    q[1] >= Math.min(p[1], r[1])
-  );
+function areaInside([x1, y1], [x2, y2]) {
+  [x1, x2] = orderBy([x1, x2], (v) => v);
+  [y1, y2] = orderBy([y1, y2], (v) => v);
+
+  const left = tlbrAreas[y2]?.[x1 - 1] ?? 0;
+  const top = tlbrAreas[y1 - 1]?.[x2] ?? 0;
+  const topleft = tlbrAreas[y1 - 1]?.[x1 - 1] ?? 0;
+
+  return tlbrAreas[y2][x2] - left - top + topleft;
 }
-
-function orientation(p, q, r) {
-  let val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
-
-  if (val === 0) return 0;
-
-  return val > 0 ? 1 : 2;
-}
-
-function intersect(points) {
-  let o1 = orientation(points[0][0], points[0][1], points[1][0]);
-  let o2 = orientation(points[0][0], points[0][1], points[1][1]);
-  let o3 = orientation(points[1][0], points[1][1], points[0][0]);
-  let o4 = orientation(points[1][0], points[1][1], points[0][1]);
-
-  console.log(
-    o1,
-    o2,
-    o3,
-    o4,
-    // onSegment(points[0][0], points[1][0], points[0][1]),
-    // onSegment(points[0][0], points[1][1], points[0][1]),
-    onSegment(points[1][0], points[0][0], points[1][1]),
-    onSegment(points[1][0], points[0][1], points[1][1]),
-  );
-
-  if (o1 !== o2 && o3 !== o4) return true;
-
-  // if (o1 === 0 && onSegment(points[0][0], points[1][0], points[0][1]))
-  //   return true;
-  //
-  // if (o2 === 0 && onSegment(points[0][0], points[1][1], points[0][1]))
-  //   return true;
-
-  if (o3 === 0 && onSegment(points[1][0], points[0][0], points[1][1]))
-    return true;
-
-  if (o4 === 0 && onSegment(points[1][0], points[0][1], points[1][1]))
-    return true;
-
-  return false;
-}
-
-// function intersect(a, b, c, d) {
-//   const ccw = ([x1, y1], [x2, y2], [x3, y3]) => {
-//     return (y3 - y1) * (x2 - x1) > (y2 - y1) * (x3 - x1);
-//   };
-//
-//   return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
-// }
 
 function part1() {
   let max = 0;
@@ -90,50 +108,15 @@ function part2() {
     for (let j = i + 1; j < input.length; j++) {
       const a = input[i];
       const b = input[j];
-      const [c, d] = [
-        [a[0], b[1]],
-        [b[0], a[1]],
-      ];
+      const ai = [xs.indexOf(a[0]) * 2, ys.indexOf(a[1]) * 2];
+      const bi = [xs.indexOf(b[0]) * 2, ys.indexOf(b[1]) * 2];
 
-      const [cInt, dInt] = edges.reduce(
-        ([cAcc, dAcc], [f, g]) => {
-          if (area(a, b) === 24) {
-            console.log(
-              f,
-              g,
-              intersect([
-                [c, [c[0], maxY]],
-                [f, g],
-              ]),
-            );
-            console.log(
-              f,
-              g,
-              intersect([
-                [d, [d[0], maxY]],
-                [f, g],
-              ]),
-            );
-          }
-          return [
-            cAcc +
-              intersect([
-                [c, [c[0], maxY]],
-                [f, g],
-              ]),
-            dAcc +
-              intersect([
-                [d, [d[0], maxY]],
-                [f, g],
-              ]),
-          ];
-        },
-        [0, 0],
-      );
+      const areaActual = area(a, b);
+      const areaReal = area(ai, bi);
+      const areaIn = areaInside(ai, bi);
 
-      console.log(cInt, dInt, a, b, c, d, area(a, b));
-      if (cInt % 2 !== 0 && dInt % 2 !== 0) {
-        max = Math.max(max, area(a, b));
+      if (areaReal === areaIn) {
+        max = Math.max(max, areaActual);
       }
     }
   }
